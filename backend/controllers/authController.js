@@ -1,4 +1,4 @@
-const { pool } = require('../config/db');
+const { pool, executeQuery } = require('../config/db');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -32,8 +32,8 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Get user from database
-    const [rows] = await pool.query(
+    // Get user from database with retry logic
+    const [rows] = await executeQuery(
       'SELECT * FROM admin WHERE username = ?',
       [username]
     );
@@ -76,6 +76,22 @@ exports.login = async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
+    
+    // Handle specific database connection errors
+    if (error.code === 'ETIMEDOUT') {
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection timeout. Please try again in a moment.'
+      });
+    }
+    
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({
+        success: false,
+        message: 'Database server is currently unavailable. Please try again later.'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'An error occurred during login'
