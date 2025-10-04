@@ -5,7 +5,7 @@ const path = require('path');
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || '13.228.225.19',
+  host: process.env.DB_HOST || 'auth-db1988.hostgr.io',
   port: parseInt(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'u527515383_aishegasckk',
   password: process.env.DB_PASS || 'Aishegasckk_03',
