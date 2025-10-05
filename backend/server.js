@@ -56,7 +56,7 @@ const authenticate = (req, res, next) => {
 // Import routes
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./adminbackend/route/adminRoutes');
-// const departmentRoutes = require('../../department/backend/route/deptroute');
+const departmentRoutes = require('./dept-backend/route/deptroute');
 // const officeRoutes = require('../../office/backend/route/officeRoute');
 // const officedeptRoutes = require('../../office/backend/route/officedeptRoutes');
 const departmentUserRoutes = require('./adminbackend/route/departmentUserRoutes');
@@ -65,12 +65,11 @@ const officeUserRoutes = require('./adminbackend/route/officeuserroutes');
 const submittedUserRoutes = require('./adminbackend/route/submittedUserRoutes');
 // const templateRoutes = require('../../Admin-Frontend/template/routes/templateRoutes'); 
 
-// Use routes with proper path prefix
-app.use('/api', authRoutes);
+// Use routes with propeuthRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/department-user', departmentUserRoutes);
 app.use('/api/office-user', officeUserRoutes);
-// app.use('/api', departmentRoutes);
+app.use('/api', departmentRoutes);
 // app.use('/api/office', officeRoutes);
 // mount the officedept sub-router so frontend calls like /api/office/officedept/create work
 // app.use('/api/office/officedept', officedeptRoutes);
