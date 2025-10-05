@@ -7,13 +7,18 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const pool = require('./config/db').pool;
 
-// Load environment variables
-dotenv.config();
+// Load environment variables only in development
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config();
+}
 
 const app = express();
 
 // CORS configuration
-const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3001', 'http://localhost:3000'];
+const allowedOrigins = process.env.CORS_ORIGIN ? 
+  process.env.CORS_ORIGIN.split(',') : 
+  ['http://localhost:3001', 'http://localhost:3000'];
+
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
@@ -24,11 +29,13 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
-  next();
-});
+// Request logging middleware (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+    next();
+  });
+}
 
 // Middleware to verify JWT token
 const authenticate = (req, res, next) => {
@@ -48,9 +55,10 @@ const authenticate = (req, res, next) => {
 
 // Import routes
 const authRoutes = require('./routes/auth');
-const adminRoutes = require('./adminbackend/route/adminRoutes'); const departmentRoutes = require('../../department/backend/route/deptroute');
-const officeRoutes = require('../../office/backend/route/officeRoute');
-const officedeptRoutes = require('../../office/backend/route/officedeptRoutes');
+const adminRoutes = require('./adminbackend/route/adminRoutes');
+// const departmentRoutes = require('../../department/backend/route/deptroute');
+// const officeRoutes = require('../../office/backend/route/officeRoute');
+// const officedeptRoutes = require('../../office/backend/route/officedeptRoutes');
 const departmentUserRoutes = require('./adminbackend/route/departmentUserRoutes');
 const officeUserRoutes = require('./adminbackend/route/officeuserroutes');
 // const principleRoutes = require('../../principle/backend/route/principleroute');
@@ -62,18 +70,36 @@ app.use('/api', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/department-user', departmentUserRoutes);
 app.use('/api/office-user', officeUserRoutes);
- app.use('/api', departmentRoutes);
- app.use('/api/office', officeRoutes);
+// app.use('/api', departmentRoutes);
+// app.use('/api/office', officeRoutes);
 // mount the officedept sub-router so frontend calls like /api/office/officedept/create work
-app.use('/api/office/officedept', officedeptRoutes);
-app.use('/api/principle', principleRoutes);
+// app.use('/api/office/officedept', officedeptRoutes);
+// app.use('/api/principle', principleRoutes);
 app.use('/api/submitted-data', submittedUserRoutes);
-app.use('/api/template', templateRoutes);
+// app.use('/api/template', templateRoutes);
 
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date() });
+// Health check endpoint with more details
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    const [result] = await pool.query('SELECT 1 as test');
+    
+    res.json({ 
+      status: 'OK', 
+      timestamp: new Date(),
+      database: 'Connected',
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'ERROR',
+      timestamp: new Date(),
+      database: 'Disconnected',
+      error: error.message
+    });
+  }
 });
 
 // Error handling middleware
