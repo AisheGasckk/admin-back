@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
-const { pool } = require('../../../Admin/backend/config/db');
+const { pool } = require('../../config/db');
 
 const createTransporter = () => nodemailer.createTransport({
   service: 'gmail',

@@ -1,4 +1,4 @@
-const { pool } = require('../../../Admin/backend/config/db');
+const { pool } = require('../../config/db');
 
 // Get all office submissions (Teaching & Non-Teaching)
 exports.getAllOfficeSubmissions = async (req, res) => {
