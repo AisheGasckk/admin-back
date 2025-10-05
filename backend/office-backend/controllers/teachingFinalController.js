@@ -1,4 +1,4 @@
-const { pool } = require('../../../Admin/backend/config/db');
+const { pool } = require('../../config/db');
 
 // Get lock status for teaching staff
 exports.getTeachingLockStatus = async (req, res) => {

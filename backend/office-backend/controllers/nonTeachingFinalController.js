@@ -1,4 +1,4 @@
-const { pool } = require('../../../Admin/backend/config/db');
+const { pool } = require('../../config/db');
 
 // 1. Get completion status for each group
 exports.getCompletionStatus = async (req, res) => {

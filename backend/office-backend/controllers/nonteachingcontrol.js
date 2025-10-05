@@ -1,4 +1,4 @@
-const { pool } = require('../../../Admin/backend/config/db'); // Corrected path
+const { pool } = require('../../config/db');
 
 // Get dropdown options for staff_type, staff_group, category, subcategory, gender
 exports.getNonTeachingDropdowns = async (req, res) => {

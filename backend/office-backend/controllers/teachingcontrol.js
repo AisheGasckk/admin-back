@@ -1,4 +1,4 @@
-const { pool } = require('../../../Admin/backend/config/db');
+const { pool } = require('../../config/db');
 
 // Helper to sanitize date fields
 function sanitizeDateFields(data) {

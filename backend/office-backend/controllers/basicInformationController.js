@@ -1,4 +1,4 @@
-const { pool } = require('../../../Admin/backend/config/db');
+const { pool } = require('../../config/db');
 
 // GET basic information
 exports.getBasicInformation = async (req, res) => {
