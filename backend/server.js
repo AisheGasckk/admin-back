@@ -95,30 +95,6 @@ app.post('/api/reset-password', resetPassword);
 // Department routes - use specific prefix instead of catch-all
 app.use('/api/department', departmentRoutes);
 
-
-// Health check endpoint with more details
-app.get('/health', async (req, res) => {
-  try {
-    // Test database connection
-    const [result] = await pool.query('SELECT 1 as test');
-    
-    res.json({ 
-      status: 'OK', 
-      timestamp: new Date(),
-      database: 'Connected',
-      environment: process.env.NODE_ENV || 'development'
-    });
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(500).json({
-      status: 'ERROR',
-      timestamp: new Date(),
-      database: 'Disconnected',
-      error: error.message
-    });
-  }
-});
-
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server Error:', err);
