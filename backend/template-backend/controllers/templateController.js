@@ -1,4 +1,4 @@
-const { pool } = require('../../../Admin/backend/config/db');
+const { pool } = require('../../config/db');
 
 // Student Enrollment Summary
 exports.getDepartmentEnrollmentSummary = async (req, res) => {
