@@ -7,15 +7,6 @@ if (process.env.NODE_ENV !== 'production') {
   dotenv.config({ path: path.join(__dirname, '../.env') });
 }
 
-// Add debug logging
-console.log('Database Config:', {
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  database: process.env.DB_NAME,
-  // Don't log password for security
-});
-
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT) || 3306,
@@ -28,10 +19,10 @@ const pool = mysql.createPool({
   connectTimeout: 60000,
   acquireTimeout: 60000,
   timeout: 60000,
-  reconnect: true,
-  idleTimeout: 300000,
+  // Force IPv4
+  family: 4,
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-  debug: process.env.NODE_ENV === 'development'
+  debug: false // Disable debug to reduce console noise
 });
 
 const promisePool = pool.promise();
