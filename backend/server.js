@@ -61,13 +61,14 @@ const departmentUserRoutes = require('./adminbackend/route/departmentUserRoutes'
 const officeUserRoutes = require('./adminbackend/route/officeuserroutes');
 const submittedUserRoutes = require('./adminbackend/route/submittedUserRoutes');
 
-// Use routes properly
-app.use('/api/auth', authRoutes);  // <-- ADD THIS LINE
+// Use routes properly - Order matters! Most specific routes first
+app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/department-user', departmentUserRoutes);
 app.use('/api/office-user', officeUserRoutes);
-app.use('/api', departmentRoutes);
 app.use('/api/submitted-data', submittedUserRoutes);
+// Department routes MUST be last since they use '/api' catch-all
+app.use('/api', departmentRoutes);
 
 
 // Health check endpoint with more details
