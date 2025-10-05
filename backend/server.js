@@ -67,6 +67,14 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/department-user', departmentUserRoutes);
 app.use('/api/office-user', officeUserRoutes);
 app.use('/api/submitted-data', submittedUserRoutes);
+
+// Add backward compatibility route for direct /api/login
+const { login, forgotPassword, verifyOtp, resetPassword } = require('./controllers/authController');
+app.post('/api/login', login);
+app.post('/api/forgot-password', forgotPassword);
+app.post('/api/verify-otp', verifyOtp);
+app.post('/api/reset-password', resetPassword);
+
 // Department routes MUST be last since they use '/api' catch-all
 app.use('/api', departmentRoutes);
 
