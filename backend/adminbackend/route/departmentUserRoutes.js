@@ -58,4 +58,25 @@ router.get('/hod/:deptId', async (req, res) => {
   }
 });
 
+// Get degree levels for a department
+router.get('/degree-levels/:deptId', async (req, res) => {
+  try {
+    const { deptId } = req.params;
+    if (!deptId) {
+      return res.status(400).json({ success: false, message: 'Department ID is required' });
+    }
+    
+    const [rows] = await pool.query(
+      'SELECT DISTINCT degree_level FROM department_users WHERE dept_id = ?',
+      [deptId]
+    );
+    
+    const degreeLevels = rows.map(r => r.degree_level).filter(Boolean);
+    res.json({ success: true, degree_levels: degreeLevels });
+  } catch (error) {
+    console.error('Error fetching degree levels:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch degree levels', error: error.message });
+  }
+});
+
 module.exports = router;

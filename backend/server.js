@@ -37,7 +37,10 @@ app.use(express.urlencoded({ extended: true }));
 // Request logging middleware (only in development)
 if (process.env.NODE_ENV !== 'production') {
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+    // Skip logging health checks to reduce noise
+    if (req.url !== '/health') {
+      console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+    }
     next();
   });
 }
@@ -96,8 +99,22 @@ app.post('/api/reset-password', resetPassword);
 app.use('/api/department', departmentRoutes);
 
 // Health check endpoint (for hosting platform)
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    await pool.query('SELECT 1');
+    res.status(200).json({ 
+      status: 'OK', 
+      timestamp: new Date().toISOString(),
+      database: 'Connected'
+    });
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'ERROR', 
+      timestamp: new Date().toISOString(),
+      database: 'Disconnected'
+    });
+  }
 });
 
 // Error handling middleware
