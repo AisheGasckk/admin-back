@@ -15,7 +15,8 @@ router.get('/student-enrollment/summary', departmentUserController.getStudentEnr
 router.get('/student-examination/summary', departmentUserController.getStudentExaminationSummary); // Get student examination summary
 router.get('/details/:deptId', departmentUserController.getDepartmentUserDetails); // Get details of a specific department user
 
-// ADD THIS MISSING ROUTE - Get academic year for a department
+// ADD THESE MISSING ROUTES:
+// Get academic year for a department
 router.get('/academic-year/:deptId', async (req, res) => {
   try {
     const { deptId } = req.params;
@@ -34,7 +35,7 @@ router.get('/academic-year/:deptId', async (req, res) => {
   }
 });
 
-// ADD THIS MISSING ROUTE - Get HOD name for a department  
+// Get HOD name for a department
 router.get('/hod/:deptId', async (req, res) => {
   try {
     const { deptId } = req.params;

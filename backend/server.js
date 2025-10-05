@@ -95,6 +95,11 @@ app.post('/api/reset-password', resetPassword);
 // Department routes - use specific prefix instead of catch-all
 app.use('/api/department', departmentRoutes);
 
+// Health check endpoint (for hosting platform)
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server Error:', err);
