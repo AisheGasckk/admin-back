@@ -73,8 +73,8 @@ const officeRoutes = require('./office-backend/route/officeRoute');
 const officeDeptRoutes = require('./office-backend/route/officedeptRoutes');
 // ADD PRINCIPLE BACKEND ROUTES
 const principleRoutes = require('./principle-backend/route/principleroute');
-// Import template routes
-const templateRoutes = require('./routes/templateRoutes');
+// Import template routes - CORRECT PATH
+const templateRoutes = require('./template-backend/routes/templateRoutes');
 
 // Use routes properly - Order matters! Most specific routes first
 app.use('/api/auth', authRoutes);
