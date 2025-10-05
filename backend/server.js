@@ -82,8 +82,8 @@ app.post('/api/forgot-password', forgotPassword);
 app.post('/api/verify-otp', verifyOtp);
 app.post('/api/reset-password', resetPassword);
 
-// Department routes MUST be last since they use '/api' catch-all
-app.use('/api', departmentRoutes);
+// Department routes - use specific prefix instead of catch-all
+app.use('/api/department', departmentRoutes);
 
 
 // Health check endpoint with more details
