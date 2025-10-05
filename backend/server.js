@@ -60,6 +60,9 @@ const departmentRoutes = require('./dept-backend/route/deptroute');
 const departmentUserRoutes = require('./adminbackend/route/departmentUserRoutes');
 const officeUserRoutes = require('./adminbackend/route/officeuserroutes');
 const submittedUserRoutes = require('./adminbackend/route/submittedUserRoutes');
+// Office backend routes
+const officeRoutes = require('./office-backend/route/officeRoute');
+const officeDeptRoutes = require('./office-backend/route/officedeptRoutes');
 
 // Use routes properly - Order matters! Most specific routes first
 app.use('/api/auth', authRoutes);
@@ -67,6 +70,10 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/department-user', departmentUserRoutes);
 app.use('/api/office-user', officeUserRoutes);
 app.use('/api/submitted-data', submittedUserRoutes);
+
+// Office backend routes
+app.use('/api/office', officeRoutes);
+app.use('/api/office/officedept', officeDeptRoutes);
 
 // Add backward compatibility route for direct /api/login
 const { login, forgotPassword, verifyOtp, resetPassword } = require('./controllers/authController');
