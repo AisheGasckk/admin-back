@@ -23,34 +23,78 @@ const createTransporter = () => {
 // Department forgot password controller (OTP only)
 exports.forgotDepartmentPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const rawEmail = req.body?.email;
+    const email = rawEmail ? String(rawEmail).trim().toLowerCase() : '';
+    
     if (!email) {
       return res.status(400).json({ success: false, message: 'Email is required' });
     }
+
+    // Find department user
     const [rows] = await pool.query('SELECT * FROM department_users WHERE email = ?', [email]);
     const user = rows[0];
     if (!user) {
       return res.status(404).json({ success: false, message: 'No account found' });
     }
 
-    // Generate 6-digit OTP
+    // Generate OTP and persist
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiryTime = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    // Save OTP to DB (implement your own password_resets table)
+    const expiryTime = new Date(Date.now() + 10 * 60 * 1000);
     await pool.query(
       'INSERT INTO password_resets (email, otp, expires_at, used) VALUES (?, ?, ?, 0)',
-      [user.email, otp, expiryTime]
+      [email, otp, expiryTime]
     );
 
-    // Mask email for UI
-    const maskedEmail = user.email.replace(/(.{2})(.*)(@.*)/, '$1***$3');
+    const maskedEmail = email.replace(/(.{2})(.*)(@.*)/, '$1***$3');
 
-    // Send OTP email
+    // Check email configuration before attempting to send
+    const emailUser = process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS;
+
+    if (!emailUser || !emailPass) {
+      console.error('forgotDepartmentPassword: EMAIL_USER/EMAIL_PASS not configured');
+      
+      // In development/testing, return OTP in response to unblock testing
+      if (process.env.NODE_ENV !== 'production') {
+        return res.json({
+          success: true,
+          message: 'Reset code generated (email service disabled in this environment)',
+          maskedEmail,
+          otpForTesting: otp // Only in non-production
+        });
+      }
+      
+      return res.status(503).json({
+        success: false,
+        message: 'Email service not configured. Please contact the administrator.'
+      });
+    }
+
+    // Create and verify transporter
     const transporter = createTransporter();
-    // Send OTP with GASCKK branding
+    try {
+      await transporter.verify();
+    } catch (verifyError) {
+      console.error('SMTP verification failed:', verifyError);
+      
+      if (process.env.NODE_ENV !== 'production') {
+        return res.json({
+          success: true,
+          message: 'Reset code generated (email server unavailable)',
+          maskedEmail,
+          otpForTesting: otp
+        });
+      }
+      
+      return res.status(503).json({
+        success: false,
+        message: 'Email service temporarily unavailable. Please try again later.'
+      });
+    }
+
+    // Send email
     await transporter.sendMail({
-      from: `"GASCKK AISHE PORTAL" <${process.env.EMAIL_USER}>`,
+      from: `"GASCKK AISHE PORTAL" <${emailUser}>`,
       to: user.email,
       subject: 'GASCKK AISHE PORTAL - Password Reset Code',
       html: `
@@ -79,7 +123,27 @@ exports.forgotDepartmentPassword = async (req, res) => {
       maskedEmail
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to send reset code' });
+    console.error('forgotDepartmentPassword error:', error);
+    
+    // Handle specific errors gracefully
+    if (error?.code === 'ETIMEDOUT') {
+      return res.status(504).json({ 
+        success: false, 
+        message: 'Database timeout. Please try again.' 
+      });
+    }
+    
+    if (error?.code === 'ECONNREFUSED') {
+      return res.status(503).json({ 
+        success: false, 
+        message: 'Service unavailable. Please try again later.' 
+      });
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to send reset code' 
+    });
   }
 };
 
