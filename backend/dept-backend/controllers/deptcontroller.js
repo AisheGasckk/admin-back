@@ -2,8 +2,64 @@ const { pool } = require('../../config/db');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
+const https = require('https');
 
-// Create email transporter function with Render-optimized settings
+// SendGrid HTTP API function (more reliable on serverless)
+const sendEmailViaSendGrid = async (to, subject, htmlContent) => {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.EMAIL_USER || 'noreply@aishegasckk.in';
+  
+  if (!apiKey) {
+    throw new Error('SENDGRID_API_KEY not configured');
+  }
+
+  const emailData = {
+    personalizations: [{
+      to: [{ email: to }],
+      subject: subject
+    }],
+    from: {
+      email: fromEmail,
+      name: 'GASCKK AISHE PORTAL'
+    },
+    content: [{
+      type: 'text/html',
+      value: htmlContent
+    }]
+  };
+
+  return new Promise((resolve, reject) => {
+    const postData = JSON.stringify(emailData);
+    
+    const options = {
+      hostname: 'api.sendgrid.com',
+      port: 443,
+      path: '/v3/mail/send',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
+      },
+      timeout: 10000
+    };
+
+    const req = https.request(options, (res) => {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        resolve('Email sent successfully via SendGrid');
+      } else {
+        reject(new Error(`SendGrid API returned status ${res.statusCode}`));
+      }
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => reject(new Error('SendGrid API timeout')));
+    req.write(postData);
+    req.end();
+  });
+};
+
+// Create email transporter function with Render-optimized settings (fallback)
 const createTransporter = () => {
   return nodemailer.createTransport({
     service: 'gmail',
@@ -15,9 +71,9 @@ const createTransporter = () => {
       pass: process.env.EMAIL_PASS,
     },
     pool: false,        // avoid pooled sockets on serverless
-    connectionTimeout: 15000,  // Longer timeout for Render
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
+    connectionTimeout: 8000,   // Shorter timeout since we have SendGrid fallback
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
     tls: { 
       rejectUnauthorized: false,
       ciphers: 'SSLv3'  // More compatible cipher
@@ -89,38 +145,54 @@ exports.forgotDepartmentPassword = async (req, res) => {
       maskedEmail
     });
 
-    // Send email in background (fire-and-forget)
-    const transporter = createTransporter();
+    // Send email in background (fire-and-forget) with dual delivery approach
     setImmediate(async () => {
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width:700px;margin:0 auto;padding:20px;background:#f7fafc;border-radius:8px;">
+          <header style="text-align:center;margin-bottom:18px;">
+            <h1 style="margin:0;color:#0b3b64">GASCKK AISHE PORTAL</h1>
+            <p style="margin:4px 0 0;color:#475569;font-size:14px">Password reset request</p>
+          </header>
+          <main style="background:white;padding:20px;border-radius:6px;text-align:center;">
+            <p style="color:#334155;margin:0 0 12px;">Use the code below to reset your password. It expires in 10 minutes.</p>
+            <div style="display:inline-block;padding:18px 28px;border-radius:8px;background:#eef2ff;color:#1e3a8a;font-size:28px;letter-spacing:6px;">
+              ${otp}
+            </div>
+            <p style="color:#64748b;margin-top:14px;font-size:13px;">If you didn't request this, ignore this email or contact admin.</p>
+          </main>
+          <footer style="text-align:center;margin-top:14px;font-size:12px;color:#94a3b8;">
+            © GASCKK AISHE PORTAL
+          </footer>
+        </div>`;
+
+      // Try SendGrid first (more reliable on serverless)
       try {
+        await sendEmailViaSendGrid(
+          user.email,
+          'GASCKK AISHE PORTAL - Password Reset Code',
+          emailHtml
+        );
+        console.log('✅ Email sent successfully via SendGrid to:', user.email);
+        return;
+      } catch (sendGridErr) {
+        console.log('⚠️ SendGrid failed, trying SMTP fallback:', sendGridErr.message);
+      }
+
+      // Fallback to SMTP if SendGrid fails
+      try {
+        const transporter = createTransporter();
         await transporter.sendMail({
           from: `"GASCKK AISHE PORTAL" <${emailUser}>`,
           to: user.email,
           subject: 'GASCKK AISHE PORTAL - Password Reset Code',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width:700px;margin:0 auto;padding:20px;background:#f7fafc;border-radius:8px;">
-              <header style="text-align:center;margin-bottom:18px;">
-                <h1 style="margin:0;color:#0b3b64">GASCKK AISHE PORTAL</h1>
-                <p style="margin:4px 0 0;color:#475569;font-size:14px">Password reset request</p>
-              </header>
-              <main style="background:white;padding:20px;border-radius:6px;text-align:center;">
-                <p style="color:#334155;margin:0 0 12px;">Use the code below to reset your password. It expires in 10 minutes.</p>
-                <div style="display:inline-block;padding:18px 28px;border-radius:8px;background:#eef2ff;color:#1e3a8a;font-size:28px;letter-spacing:6px;">
-                  ${otp}
-                </div>
-                <p style="color:#64748b;margin-top:14px;font-size:13px;">If you didn't request this, ignore this email or contact admin.</p>
-              </main>
-              <footer style="text-align:center;margin-top:14px;font-size:12px;color:#94a3b8;">
-                © GASCKK AISHE PORTAL
-              </footer>
-            </div>`
+          html: emailHtml
         });
-        console.log('✅ Email sent successfully to:', user.email);
-      } catch (mailErr) {
-        console.error('❌ forgotDepartmentPassword sendMail failed (background):', {
-          error: mailErr.message,
-          code: mailErr.code,
-          command: mailErr.command,
+        console.log('✅ Email sent successfully via SMTP to:', user.email);
+      } catch (smtpErr) {
+        console.error('❌ Both SendGrid and SMTP failed:', {
+          sendGridError: 'Failed',
+          smtpError: smtpErr.message,
+          smtpCode: smtpErr.code,
           to: user.email
         });
         
@@ -352,13 +424,9 @@ exports.resetDepartmentPassword = async (req, res) => {
     const resetId = resets[0].id;
     await pool.query('UPDATE password_resets SET used = 1 WHERE id = ?', [resetId]);
 
-    // Fire-and-forget confirmation email; do not fail reset if mail fails
-    const transporter = createTransporter();
-    transporter.sendMail({
-      from: `"GASCKK AISHE PORTAL" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'GASCKK AISHE PORTAL - Password Changed',
-      html: `
+    // Fire-and-forget confirmation email with dual delivery; do not fail reset if mail fails
+    setImmediate(async () => {
+      const confirmationHtml = `
         <div style="font-family: Arial, sans-serif; max-width:700px;margin:0 auto;padding:20px;background:#f7fafc;border-radius:8px;">
           <header style="text-align:center;margin-bottom:18px;">
             <h1 style="margin:0;color:#0b3b64">GASCKK AISHE PORTAL</h1>
@@ -376,8 +444,30 @@ exports.resetDepartmentPassword = async (req, res) => {
           <footer style="text-align:center;margin-top:14px;font-size:12px;color:#94a3b8;">
             © GASCKK AISHE PORTAL
           </footer>
-        </div>`
-    }).catch(err => console.error('resetDepartmentPassword email failed:', err));
+        </div>`;
+
+      // Try SendGrid first
+      try {
+        await sendEmailViaSendGrid(email, 'GASCKK AISHE PORTAL - Password Changed', confirmationHtml);
+        console.log('✅ Password change confirmation sent via SendGrid to:', email);
+      } catch (sendGridErr) {
+        console.log('⚠️ SendGrid failed for confirmation, trying SMTP:', sendGridErr.message);
+        
+        // Fallback to SMTP
+        try {
+          const transporter = createTransporter();
+          await transporter.sendMail({
+            from: `"GASCKK AISHE PORTAL" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: 'GASCKK AISHE PORTAL - Password Changed',
+            html: confirmationHtml
+          });
+          console.log('✅ Password change confirmation sent via SMTP to:', email);
+        } catch (smtpErr) {
+          console.error('❌ Both SendGrid and SMTP failed for confirmation email:', smtpErr.message);
+        }
+      }
+    });
 
     return res.json({ success: true, message: 'Password reset successfully.' });
   } catch (error) {
