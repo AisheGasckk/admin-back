@@ -3,22 +3,28 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
 
-// Create email transporter function
+// Create email transporter function with Render-optimized settings
 const createTransporter = () => {
   return nodemailer.createTransport({
     service: 'gmail',
     host: 'smtp.gmail.com',
-    port: 465,          // prefer SMTPS
-    secure: true,       // true for 465
+    port: 587,          // Use STARTTLS instead of SMTPS for better Render compatibility
+    secure: false,      // false for 587 with STARTTLS
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
     pool: false,        // avoid pooled sockets on serverless
-    connectionTimeout: 6000,
-    greetingTimeout: 6000,
-    socketTimeout: 8000,
-    tls: { rejectUnauthorized: false },
+    connectionTimeout: 15000,  // Longer timeout for Render
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    tls: { 
+      rejectUnauthorized: false,
+      ciphers: 'SSLv3'  // More compatible cipher
+    },
+    requireTLS: true,   // Force STARTTLS
+    logger: process.env.NODE_ENV !== 'production', // Enable logging in dev
+    debug: process.env.NODE_ENV !== 'production'   // Enable debug in dev
   });
 };
 
@@ -52,6 +58,13 @@ exports.forgotDepartmentPassword = async (req, res) => {
     // Check email configuration before attempting to send
     const emailUser = process.env.EMAIL_USER;
     const emailPass = process.env.EMAIL_PASS;
+
+    console.log('Email config check:', {
+      emailUserSet: !!emailUser,
+      emailUserValue: emailUser ? `${emailUser.substring(0, 3)}***@${emailUser.split('@')[1] || 'domain'}` : 'NOT_SET',
+      emailPassSet: !!emailPass,
+      emailPassLength: emailPass ? emailPass.length : 0
+    });
 
     if (!emailUser || !emailPass) {
       console.error('forgotDepartmentPassword: EMAIL_USER/EMAIL_PASS not configured');
@@ -102,8 +115,19 @@ exports.forgotDepartmentPassword = async (req, res) => {
               </footer>
             </div>`
         });
+        console.log('✅ Email sent successfully to:', user.email);
       } catch (mailErr) {
-        console.error('forgotDepartmentPassword sendMail failed (background):', mailErr);
+        console.error('❌ forgotDepartmentPassword sendMail failed (background):', {
+          error: mailErr.message,
+          code: mailErr.code,
+          command: mailErr.command,
+          to: user.email
+        });
+        
+        // In development, log the OTP for testing purposes
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('🔑 [DEV MODE] OTP for testing:', otp, 'for email:', user.email);
+        }
       }
     });
   } catch (error) {
