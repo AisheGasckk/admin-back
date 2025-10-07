@@ -8,15 +8,18 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     service: 'gmail',
     host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
+    port: 587,            // switch to 465 + secure:true if 587 is blocked
+    secure: false,        // true if port 465
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    tls: {
-      rejectUnauthorized: false,
-    },
+    pool: true,
+    maxConnections: 1,
+    connectionTimeout: 8000, // 8s
+    greetingTimeout: 8000,   // 8s
+    socketTimeout: 10000,    // 10s
+    tls: { rejectUnauthorized: false },
   });
 };
 
@@ -70,34 +73,15 @@ exports.forgotDepartmentPassword = async (req, res) => {
       });
     }
 
-    // Create and verify transporter
+    // Create transporter (do not call verify() to avoid blocking timeouts)
     const transporter = createTransporter();
-    try {
-      await transporter.verify();
-    } catch (verifyError) {
-      console.error('SMTP verification failed:', verifyError);
-      
-      if (process.env.NODE_ENV !== 'production') {
-        return res.json({
-          success: true,
-          message: 'Reset code generated (email server unavailable)',
-          maskedEmail,
-          otpForTesting: otp
-        });
-      }
-      
-      return res.status(503).json({
-        success: false,
-        message: 'Email service temporarily unavailable. Please try again later.'
-      });
-    }
 
-    // Send email
-    await transporter.sendMail({
-      from: `"GASCKK AISHE PORTAL" <${emailUser}>`,
-      to: user.email,
-      subject: 'GASCKK AISHE PORTAL - Password Reset Code',
-      html: `
+    try {
+      await transporter.sendMail({
+        from: `"GASCKK AISHE PORTAL" <${emailUser}>`,
+        to: user.email,
+        subject: 'GASCKK AISHE PORTAL - Password Reset Code',
+        html: `
         <div style="font-family: Arial, sans-serif; max-width:700px;margin:0 auto;padding:20px;background:#f7fafc;border-radius:8px;">
           <header style="text-align:center;margin-bottom:18px;">
             <h1 style="margin:0;color:#0b3b64">GASCKK AISHE PORTAL</h1>
@@ -113,11 +97,28 @@ exports.forgotDepartmentPassword = async (req, res) => {
           <footer style="text-align:center;margin-top:14px;font-size:12px;color:#94a3b8;">
             © GASCKK AISHE PORTAL
           </footer>
-        </div>
-      `
-    });
+        </div>`
+      });
+    } catch (mailErr) {
+      console.error('forgotDepartmentPassword sendMail failed:', mailErr);
 
-    res.json({
+      if (process.env.NODE_ENV !== 'production') {
+        return res.json({
+          success: true,
+          message: 'Reset code generated (email disabled/unavailable in this environment)',
+          maskedEmail,
+          otpForTesting: otp
+        });
+      }
+
+      const isTimeout = mailErr?.code === 'ETIMEDOUT' || mailErr?.code === 'ESOCKET' || mailErr?.command === 'CONN';
+      return res.status(isTimeout ? 503 : 500).json({
+        success: false,
+        message: 'Email service temporarily unavailable. Please try again later.'
+      });
+    }
+
+    return res.json({
       success: true,
       message: 'Reset code sent successfully',
       maskedEmail
@@ -357,10 +358,9 @@ exports.resetDepartmentPassword = async (req, res) => {
     const resetId = resets[0].id;
     await pool.query('UPDATE password_resets SET used = 1 WHERE id = ?', [resetId]);
 
-    // Send confirmation including username + new password (per request)
+    // Fire-and-forget confirmation email; do not fail reset if mail fails
     const transporter = createTransporter();
-    // Nicer confirmation and include username + new password
-    await transporter.sendMail({
+    transporter.sendMail({
       from: `"GASCKK AISHE PORTAL" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'GASCKK AISHE PORTAL - Password Changed',
@@ -382,11 +382,10 @@ exports.resetDepartmentPassword = async (req, res) => {
           <footer style="text-align:center;margin-top:14px;font-size:12px;color:#94a3b8;">
             © GASCKK AISHE PORTAL
           </footer>
-        </div>
-      `
-    });
+        </div>`
+    }).catch(err => console.error('resetDepartmentPassword email failed:', err));
 
-    res.json({ success: true, message: 'Password reset successfully. Confirmation email sent.' });
+    return res.json({ success: true, message: 'Password reset successfully.' });
   } catch (error) {
     console.error('resetDepartmentPassword error:', error);
     res.status(500).json({ success: false, message: 'Failed to reset password' });
