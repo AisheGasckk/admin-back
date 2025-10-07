@@ -8,17 +8,16 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     service: 'gmail',
     host: 'smtp.gmail.com',
-    port: 587,            // switch to 465 + secure:true if 587 is blocked
-    secure: false,        // true if port 465
+    port: 465,          // prefer SMTPS
+    secure: true,       // true for 465
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
-    pool: true,
-    maxConnections: 1,
-    connectionTimeout: 8000, // 8s
-    greetingTimeout: 8000,   // 8s
-    socketTimeout: 10000,    // 10s
+    pool: false,        // avoid pooled sockets on serverless
+    connectionTimeout: 6000,
+    greetingTimeout: 6000,
+    socketTimeout: 8000,
     tls: { rejectUnauthorized: false },
   });
 };
@@ -56,95 +55,66 @@ exports.forgotDepartmentPassword = async (req, res) => {
 
     if (!emailUser || !emailPass) {
       console.error('forgotDepartmentPassword: EMAIL_USER/EMAIL_PASS not configured');
-      
-      // In development/testing, return OTP in response to unblock testing
       if (process.env.NODE_ENV !== 'production') {
         return res.json({
           success: true,
           message: 'Reset code generated (email service disabled in this environment)',
           maskedEmail,
-          otpForTesting: otp // Only in non-production
+          otpForTesting: otp
         });
       }
-      
       return res.status(503).json({
         success: false,
         message: 'Email service not configured. Please contact the administrator.'
       });
     }
 
-    // Create transporter (do not call verify() to avoid blocking timeouts)
-    const transporter = createTransporter();
-
-    try {
-      await transporter.sendMail({
-        from: `"GASCKK AISHE PORTAL" <${emailUser}>`,
-        to: user.email,
-        subject: 'GASCKK AISHE PORTAL - Password Reset Code',
-        html: `
-        <div style="font-family: Arial, sans-serif; max-width:700px;margin:0 auto;padding:20px;background:#f7fafc;border-radius:8px;">
-          <header style="text-align:center;margin-bottom:18px;">
-            <h1 style="margin:0;color:#0b3b64">GASCKK AISHE PORTAL</h1>
-            <p style="margin:4px 0 0;color:#475569;font-size:14px">Password reset request</p>
-          </header>
-          <main style="background:white;padding:20px;border-radius:6px;text-align:center;">
-            <p style="color:#334155;margin:0 0 12px;">Use the code below to reset your password. It expires in 10 minutes.</p>
-            <div style="display:inline-block;padding:18px 28px;border-radius:8px;background:#eef2ff;color:#1e3a8a;font-size:28px;letter-spacing:6px;">
-              ${otp}
-            </div>
-            <p style="color:#64748b;margin-top:14px;font-size:13px;">If you didn't request this, ignore this email or contact admin.</p>
-          </main>
-          <footer style="text-align:center;margin-top:14px;font-size:12px;color:#94a3b8;">
-            © GASCKK AISHE PORTAL
-          </footer>
-        </div>`
-      });
-    } catch (mailErr) {
-      console.error('forgotDepartmentPassword sendMail failed:', mailErr);
-
-      if (process.env.NODE_ENV !== 'production') {
-        return res.json({
-          success: true,
-          message: 'Reset code generated (email disabled/unavailable in this environment)',
-          maskedEmail,
-          otpForTesting: otp
-        });
-      }
-
-      const isTimeout = mailErr?.code === 'ETIMEDOUT' || mailErr?.code === 'ESOCKET' || mailErr?.command === 'CONN';
-      return res.status(isTimeout ? 503 : 500).json({
-        success: false,
-        message: 'Email service temporarily unavailable. Please try again later.'
-      });
-    }
-
-    return res.json({
+    // Respond immediately to avoid 502/CORS issues
+    res.json({
       success: true,
-      message: 'Reset code sent successfully',
+      message: 'Reset code generated. Check your email shortly.',
       maskedEmail
+    });
+
+    // Send email in background (fire-and-forget)
+    const transporter = createTransporter();
+    setImmediate(async () => {
+      try {
+        await transporter.sendMail({
+          from: `"GASCKK AISHE PORTAL" <${emailUser}>`,
+          to: user.email,
+          subject: 'GASCKK AISHE PORTAL - Password Reset Code',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width:700px;margin:0 auto;padding:20px;background:#f7fafc;border-radius:8px;">
+              <header style="text-align:center;margin-bottom:18px;">
+                <h1 style="margin:0;color:#0b3b64">GASCKK AISHE PORTAL</h1>
+                <p style="margin:4px 0 0;color:#475569;font-size:14px">Password reset request</p>
+              </header>
+              <main style="background:white;padding:20px;border-radius:6px;text-align:center;">
+                <p style="color:#334155;margin:0 0 12px;">Use the code below to reset your password. It expires in 10 minutes.</p>
+                <div style="display:inline-block;padding:18px 28px;border-radius:8px;background:#eef2ff;color:#1e3a8a;font-size:28px;letter-spacing:6px;">
+                  ${otp}
+                </div>
+                <p style="color:#64748b;margin-top:14px;font-size:13px;">If you didn't request this, ignore this email or contact admin.</p>
+              </main>
+              <footer style="text-align:center;margin-top:14px;font-size:12px;color:#94a3b8;">
+                © GASCKK AISHE PORTAL
+              </footer>
+            </div>`
+        });
+      } catch (mailErr) {
+        console.error('forgotDepartmentPassword sendMail failed (background):', mailErr);
+      }
     });
   } catch (error) {
     console.error('forgotDepartmentPassword error:', error);
-    
-    // Handle specific errors gracefully
     if (error?.code === 'ETIMEDOUT') {
-      return res.status(504).json({ 
-        success: false, 
-        message: 'Database timeout. Please try again.' 
-      });
+      return res.status(504).json({ success: false, message: 'Database timeout. Please try again.' });
     }
-    
     if (error?.code === 'ECONNREFUSED') {
-      return res.status(503).json({ 
-        success: false, 
-        message: 'Service unavailable. Please try again later.' 
-      });
+      return res.status(503).json({ success: false, message: 'Service unavailable. Please try again later.' });
     }
-    
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to send reset code' 
-    });
+    res.status(500).json({ success: false, message: 'Failed to send reset code' });
   }
 };
 
