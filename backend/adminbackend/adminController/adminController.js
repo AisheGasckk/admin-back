@@ -129,4 +129,50 @@ exports.loginAdmin = async (req, res) => {
   }
 };
 
+async function ensureAppSettingsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      name VARCHAR(64) PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+}
+
+exports.getMaintenanceStatus = async (req, res) => {
+  try {
+    await ensureAppSettingsTable();
+    const [rows] = await pool.query(
+      "SELECT name, value FROM app_settings WHERE name IN ('maintenance_mode','maintenance_message')"
+    );
+    const map = Object.fromEntries(rows.map(r => [r.name, r.value]));
+    const enabled = map.maintenance_mode === '1' || map.maintenance_mode === 'true';
+    const message = map.maintenance_message || '';
+    res.json({ success: true, maintenance: { enabled, message } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to get maintenance status', error: error.message });
+  }
+};
+
+exports.setMaintenanceStatus = async (req, res) => {
+  try {
+    await ensureAppSettingsTable();
+    const enabled = req.body?.enabled ?? req.body?.maintenance ?? false;
+    const message = (req.body?.message || '').toString();
+
+    await pool.query(
+      "INSERT INTO app_settings (name,value) VALUES ('maintenance_mode', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)",
+      [enabled ? '1' : '0']
+    );
+    await pool.query(
+      "INSERT INTO app_settings (name,value) VALUES ('maintenance_message', ?) ON DUPLICATE KEY UPDATE value=VALUES(value)",
+      [message]
+    );
+
+    res.json({ success: true, maintenance: { enabled: !!enabled, message } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to set maintenance status', error: error.message });
+  }
+};
+
 

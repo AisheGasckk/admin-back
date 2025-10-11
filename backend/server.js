@@ -34,6 +34,38 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Maintenance gate (skip health and admin maintenance endpoints)
+let maintenanceCache = { enabled: false, message: '', ts: 0 };
+app.use(async (req, res, next) => {
+  try {
+    if (req.path === '/health' || req.path.startsWith('/api/admin/maintenance')) {
+      return next();
+    }
+    const now = Date.now();
+    if (now - maintenanceCache.ts > 15000) {
+      const [rows] = await pool.query(
+        "SELECT name, value FROM app_settings WHERE name IN ('maintenance_mode','maintenance_message')"
+      );
+      const map = Object.fromEntries(rows.map(r => [r.name, r.value]));
+      maintenanceCache = {
+        enabled: map.maintenance_mode === '1' || map.maintenance_mode === 'true',
+        message: map.maintenance_message || '',
+        ts: now
+      };
+    }
+    if (maintenanceCache.enabled) {
+      return res.status(503).json({
+        success: false,
+        maintenance: true,
+        message: maintenanceCache.message || 'Service is under maintenance'
+      });
+    }
+  } catch (e) {
+    // fail-open
+  }
+  next();
+});
+
 // Request logging middleware (only in development)
 if (process.env.NODE_ENV !== 'production') {
   app.use((req, res, next) => {
