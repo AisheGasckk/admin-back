@@ -7,8 +7,6 @@ const {
   addAdmin,
   deleteAdmin,
   updateAcademicYearForAll,
-  getMaintenanceStatus,
-  setMaintenanceStatus,
 } = require('../adminController/adminController');
 
 // Admin management routes
@@ -19,9 +17,5 @@ router.post('/', addAdmin); // Add a new admin
 router.delete('/:id', deleteAdmin); // Delete an admin
 // Update academic year for all users
 router.post('/update-academic-year', updateAcademicYearForAll);
-
-// Maintenance mode (toggle by Nodal Officer)
-router.get('/maintenance', getMaintenanceStatus);
-router.post('/maintenance', setMaintenanceStatus);
 
 module.exports = router;
