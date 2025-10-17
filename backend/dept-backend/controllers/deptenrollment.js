@@ -105,17 +105,91 @@ exports.addEnrollmentData = async (req, res) => {
   }
 };
 
-// Get student details with category/subcategory names
-exports.getStudentDetails = async (req, res) => {
+// Update student enrollment data
+exports.updateEnrollmentData = async (req, res) => {
+  const connection = await pool.getConnection();
   try {
-    const { deptId } = req.params;
-    if (!deptId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Department ID is required'
+    await connection.beginTransaction();
+    const { records } = req.body;
+
+    if (!Array.isArray(records)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid data format' 
       });
     }
 
+    for (const record of records) {
+      const {
+        academic_year,
+        dept_id,
+        category_id,
+        subcategory_id,
+        gender_id,
+        count,
+        year,
+        degree_level
+      } = record;
+
+      // Find existing record by exact match including gender_id
+      const [existing] = await connection.query(
+        `SELECT id FROM student_enrollment 
+         WHERE academic_year = ? 
+         AND dept_id = ? 
+         AND category_id = ? 
+         AND subcategory_id = ? 
+         AND gender_id = ? 
+         AND year = ? 
+         AND degree_level = ?
+         LIMIT 1`,
+        [academic_year, dept_id, category_id, subcategory_id, 
+         gender_id, year, degree_level]
+      );
+
+      if (existing.length > 0) {
+        // Update existing record with new count
+        await connection.query(
+          `UPDATE student_enrollment 
+           SET count = ?
+           WHERE id = ?`,
+          [Number(count || 0), existing[0].id]
+        );
+      } else {
+        // Only insert if record doesn't exist
+        await connection.query(
+          `INSERT INTO student_enrollment 
+           (academic_year, dept_id, category_id, subcategory_id, 
+            gender_id, count, year, degree_level, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [academic_year, dept_id, category_id, subcategory_id,
+           gender_id, Number(count || 0), year, degree_level, 'Completed']
+        );
+      }
+    }
+
+    await connection.commit();
+    res.json({ 
+      success: true, 
+      message: 'Enrollment data updated successfully' 
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update enrollment data', 
+      error: error.message 
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Modify getStudentDetails query to properly aggregate by gender
+exports.getStudentDetails = async (req, res) => {
+  try {
+    const { deptId } = req.params;
+    
     const [rows] = await pool.query(
       `SELECT 
         sd.academic_year,
@@ -123,7 +197,7 @@ exports.getStudentDetails = async (req, res) => {
         sd.degree_level,
         c.name as category,
         sc.name as subcategory,
-        sd.status,  -- ADD THIS LINE
+        sd.status,
         SUM(CASE WHEN g.name = 'Male' THEN sd.count ELSE 0 END) as male_count,
         SUM(CASE WHEN g.name = 'Female' THEN sd.count ELSE 0 END) as female_count,
         SUM(CASE WHEN g.name = 'Transgender' THEN sd.count ELSE 0 END) as transgender_count
@@ -132,7 +206,13 @@ exports.getStudentDetails = async (req, res) => {
       JOIN category_master sc ON sd.subcategory_id = sc.id
       JOIN gender_master g ON sd.gender_id = g.id
       WHERE sd.dept_id = ?
-      GROUP BY sd.academic_year, sd.year, sd.degree_level, c.name, sc.name, sd.status  -- ADD sd.status HERE
+      GROUP BY 
+        sd.academic_year, 
+        sd.year, 
+        sd.degree_level,
+        c.name,
+        sc.name,
+        sd.status
       ORDER BY sd.academic_year DESC, sd.year ASC, sd.degree_level ASC`,
       [deptId]
     );
@@ -149,66 +229,6 @@ exports.getStudentDetails = async (req, res) => {
     });
   }
 };
-
-// Update student enrollment data (update counts for existing records)
-exports.updateEnrollmentData = async (req, res) => {
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-    const { records } = req.body;
-
-    if (!Array.isArray(records)) {
-      return res.status(400).json({ success: false, message: 'Invalid data format' });
-    }
-
-    for (const record of records) {
-      const {
-        academic_year,
-        dept_id,
-        category_id,
-        subcategory_id,
-        gender_id,
-        count,
-        year,
-        degree_level
-      } = record;
-
-      // Only update if record exists
-      const [existing] = await connection.query(
-        `SELECT id FROM student_enrollment 
-         WHERE academic_year = ? AND dept_id = ? AND category_id = ? AND subcategory_id = ? AND gender_id = ? AND year = ? AND degree_level = ?`,
-        [academic_year, dept_id, category_id, subcategory_id, gender_id, year, degree_level]
-      );
-
-      if (existing.length > 0) {
-        // Update existing record
-        await connection.query(
-          `UPDATE student_enrollment SET count = ? 
-           WHERE id = ?`,
-          [count, existing[0].id]
-        );
-      }
-// Do NOT insert new record if not exists during update
-    }
-
-    await connection.commit();
-    res.json({ success: true, message: 'Enrollment data updated successfully' });
-    // After successful update, set year status to 'Completed'
-    if (records && records.length > 0) {
-      const { dept_id, year, academic_year, degree_level } = records[0];
-      await pool.query(
-        'UPDATE student_enrollment SET status = ? WHERE dept_id = ? AND year = ? AND academic_year = ? AND degree_level = ?',
-        ['Completed', dept_id, year, academic_year, degree_level]
-      );
-    }
-  } catch (error) {
-    await connection.rollback();
-    res.status(500).json({ success: false, message: 'Failed to update enrollment data', error: error.message });
-  } finally {
-    connection.release();
-  }
-};
-
 // Update status for all enrollment records for a dept and year
 exports.updateEnrollmentStatus = async (req, res) => {
   try {
