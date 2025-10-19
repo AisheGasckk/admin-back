@@ -113,10 +113,7 @@ exports.updateEnrollmentData = async (req, res) => {
     const { records } = req.body;
 
     if (!Array.isArray(records)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid data format' 
-      });
+      return res.status(400).json({ success: false, message: 'Invalid data format' });
     }
 
     for (const record of records) {
@@ -131,7 +128,7 @@ exports.updateEnrollmentData = async (req, res) => {
         degree_level
       } = record;
 
-      // Find existing record by exact match including gender_id
+      // Find existing record first
       const [existing] = await connection.query(
         `SELECT id FROM student_enrollment 
          WHERE academic_year = ? 
@@ -140,44 +137,45 @@ exports.updateEnrollmentData = async (req, res) => {
          AND subcategory_id = ? 
          AND gender_id = ? 
          AND year = ? 
-         AND degree_level = ?
-         LIMIT 1`,
-        [academic_year, dept_id, category_id, subcategory_id, 
-         gender_id, year, degree_level]
+         AND degree_level = ?`,
+        [academic_year, dept_id, category_id, subcategory_id, gender_id, year, degree_level]
       );
 
       if (existing.length > 0) {
-        // Update existing record with new count
-        await connection.query(
-          `UPDATE student_enrollment 
-           SET count = ?
-           WHERE id = ?`,
-          [Number(count || 0), existing[0].id]
-        );
-      } else {
-        // Only insert if record doesn't exist
+        // If count is 0, delete the record instead of updating
+        if (count === 0) {
+          await connection.query(
+            `DELETE FROM student_enrollment WHERE id = ?`,
+            [existing[0].id]
+          );
+        } else {
+          // Update with non-zero count
+          await connection.query(
+            `UPDATE student_enrollment SET count = ? WHERE id = ?`,
+            [count, existing[0].id]
+          );
+        }
+      } else if (count > 0) {
+        // Only insert new record if count > 0
         await connection.query(
           `INSERT INTO student_enrollment 
-           (academic_year, dept_id, category_id, subcategory_id, 
-            gender_id, count, year, degree_level, status)
+           (academic_year, dept_id, category_id, subcategory_id, gender_id, 
+            count, year, degree_level, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [academic_year, dept_id, category_id, subcategory_id,
-           gender_id, Number(count || 0), year, degree_level, 'Completed']
+          [academic_year, dept_id, category_id, subcategory_id, gender_id,
+           count, year, degree_level, 'Completed']
         );
       }
     }
 
     await connection.commit();
-    res.json({ 
-      success: true, 
-      message: 'Enrollment data updated successfully' 
-    });
+    res.json({ success: true, message: 'Enrollment data updated successfully' });
 
   } catch (error) {
     await connection.rollback();
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to update enrollment data', 
+      message: 'Failed to update enrollment data',
       error: error.message 
     });
   } finally {
